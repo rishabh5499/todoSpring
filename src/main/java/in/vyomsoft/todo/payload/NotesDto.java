@@ -16,9 +16,13 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class NotesDto {
+    private Long id;
     private String title;
     private String description;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
     private List<MediaDTO> medias;
+    private String reminder;
+    private String label;
+    private String colour;
 }

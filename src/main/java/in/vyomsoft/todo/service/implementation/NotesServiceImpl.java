@@ -142,8 +142,9 @@ public class NotesServiceImpl implements NotesService {
         note.setTitle(notesDto.getTitle());
         note.setDescription(notesDto.getDescription());
         note.setCreatedAt(notesDto.getCreatedAt());
+        note.setColour(notesDto.getColour());
+        note.setLabel(notesDto.getLabel());
 
-        // Incoming media list
         List<MediaDTO> incomingMediaDTOs = notesDto.getMedias();
         List<Media> existingMedias = note.getMedias();
 

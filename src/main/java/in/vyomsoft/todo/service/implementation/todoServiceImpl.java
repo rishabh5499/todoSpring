@@ -96,6 +96,7 @@ public class todoServiceImpl implements TodoService {
         selectedTodo.setName(todo.getName());
         selectedTodo.setDescription(todo.getDescription());
         selectedTodo.setCompleted(todo.isCompleted());
+        selectedTodo.setReminder(todo.getReminder());
 
         Todo updatedTodo = repository.save(selectedTodo);
         return modelMapper.map(updatedTodo, TodoDto.class);

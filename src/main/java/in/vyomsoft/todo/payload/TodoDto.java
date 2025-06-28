@@ -18,5 +18,6 @@ public class TodoDto {
     private String description;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
+    private String reminder;
     private boolean completed;
 }

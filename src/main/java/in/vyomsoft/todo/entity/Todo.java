@@ -21,6 +21,7 @@ public class Todo {
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
+    private String reminder;
     private boolean completed = false;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")

@@ -1,5 +1,7 @@
 package in.vyomsoft.todo.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import in.vyomsoft.todo.payload.MediaDTO;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -27,7 +29,8 @@ public class Notes {
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
-
+    private String label;
+    private String colour;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
