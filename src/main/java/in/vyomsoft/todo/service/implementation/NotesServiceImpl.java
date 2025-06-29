@@ -10,6 +10,7 @@ import in.vyomsoft.todo.payload.NotesDto;
 import in.vyomsoft.todo.payload.TodoDto;
 import in.vyomsoft.todo.repository.NotesRepository;
 import in.vyomsoft.todo.repository.UserRepository;
+import in.vyomsoft.todo.service.ImgBBService;
 import in.vyomsoft.todo.service.NotesService;
 import jakarta.transaction.Transactional;
 import org.aspectj.weaver.ast.Not;
@@ -33,11 +34,13 @@ public class NotesServiceImpl implements NotesService {
     ModelMapper modelMapper;
     @Autowired
     private UserRepository userRepository;
+    private ImgBBService imgBBService;
 
-    public NotesServiceImpl(NotesRepository repository, ModelMapper modelMapper, UserRepository userRepository) {
+    public NotesServiceImpl(NotesRepository repository, ModelMapper modelMapper, UserRepository userRepository, ImgBBService imgBBService) {
         this.repository = repository;
         this.modelMapper = modelMapper;
         this.userRepository = userRepository;
+        this.imgBBService = imgBBService;
     }
 
     @Override
@@ -83,48 +86,6 @@ public class NotesServiceImpl implements NotesService {
         return modelMapper.map(saved, NotesDto.class);
     }
 
-//    @Override
-//    @Transactional
-//    public NotesDto createNote(NotesDto noteDto, String username) {
-//        User user = userRepository.findByUsernameOrEmail(username, username)
-//                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-//
-//        Notes note = new Notes();
-//        note.setTitle(noteDto.getTitle());
-//        note.setDescription(noteDto.getDescription());
-//        note.setUser(user);
-//
-//        List<Media> mediaList = noteDto.getMedias().stream()
-//                .map(mediaDto -> {
-//                    Media media = new Media();
-//                    media.setMediaId(mediaDto.getData().getId());
-//                    media.setTitle(mediaDto.getData().getTitle());
-//                    media.setUrlViewer(mediaDto.getData().getUrl_viewer());
-//                    media.setDeleteUrl(mediaDto.getData().getDelete_url());
-//
-//                    Media.ImageDetail image = new Media.ImageDetail();
-//                    image.setFilename(mediaDto.getData().getImage().getFilename());
-//                    image.setMime(mediaDto.getData().getImage().getMime());
-//                    image.setUrl(mediaDto.getData().getImage().getUrl());
-//                    media.setImage(image);
-//
-//                    Media.ImageDetail thumb = new Media.ImageDetail();
-//                    thumb.setFilename(mediaDto.getData().getThumb().getFilename());
-//                    thumb.setMime(mediaDto.getData().getThumb().getMime());
-//                    thumb.setUrl(mediaDto.getData().getThumb().getUrl());
-//                    media.setThumb(thumb);
-//
-//                    media.setNote(note); // ✅ Link back to the note
-//                    return media;
-//                })
-//                .toList();
-//
-//        note.setMedias(mediaList);
-//
-//        Notes saved = repository.save(note);
-//        return modelMapper.map(saved, NotesDto.class);
-//    }
-
     @Override
     @Transactional
     public NotesDto updateNote(Long id, NotesDto notesDto, String username) throws AccessDeniedException {
@@ -138,6 +99,9 @@ public class NotesServiceImpl implements NotesService {
         if (!note.getUser().getEmail().equals(username) && !note.getUser().getUsername().equals(username)) {
             throw new AccessDeniedException("You are not authorized to update this Note");
         }
+
+        if (note.getMedias().getFirst().getDeleteUrl() != null)
+            imgBBService.deleteImage(note.getMedias().getFirst().getDeleteUrl());
 
         note.setTitle(notesDto.getTitle());
         note.setDescription(notesDto.getDescription());

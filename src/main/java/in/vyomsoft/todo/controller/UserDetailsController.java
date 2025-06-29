@@ -1,8 +1,6 @@
 package in.vyomsoft.todo.controller;
 
-import in.vyomsoft.todo.payload.RegisterDto;
-import in.vyomsoft.todo.payload.TodoDto;
-import in.vyomsoft.todo.payload.UserDetailsDTO;
+import in.vyomsoft.todo.payload.*;
 import in.vyomsoft.todo.service.UserService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -25,9 +23,19 @@ public class UserDetailsController {
         return service.getUserDetails(userDetails.getUsername());
     }
 
+    @GetMapping("/picture-limit")
+    public PictureLimitDTO getPictureChangeLimit(@AuthenticationPrincipal UserDetails userDetails) {
+        return service.getPictureChangeLimit(userDetails.getUsername());
+    }
+
     @PutMapping
     public UserDetailsDTO updateUserDetails(@AuthenticationPrincipal UserDetails userDetails, @RequestBody UserDetailsDTO user) throws AccessDeniedException {
         return service.updateUser(user, userDetails.getUsername());
+    }
+
+    @PutMapping("/passsword")
+    public String updatePassword(@AuthenticationPrincipal UserDetails userDetails, @RequestBody PassswordDTO user) throws AccessDeniedException {
+        return service.updatePassword(user, userDetails.getUsername());
     }
 
     @DeleteMapping
