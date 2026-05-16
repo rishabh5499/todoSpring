@@ -18,16 +18,16 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.AccessDeniedException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 public class todoServiceImpl implements TodoService {
 
-    TodoRepository repository;
-    ModelMapper modelMapper;
-    @Autowired
-    private UserRepository userRepository;
+    private final TodoRepository repository;
+    private final ModelMapper modelMapper;
+    private final UserRepository userRepository;
 
     public todoServiceImpl(TodoRepository repository, ModelMapper modelMapper, UserRepository userRepository) {
         this.repository = repository;
@@ -36,7 +36,19 @@ public class todoServiceImpl implements TodoService {
     }
 
     @Override
-    public List<TodoDto> getAllForUser(String username, int pageNo, int pageSize, String sortBy, String sortDir) {
+    public TodoDto getTodoById(int id, String username) throws AccessDeniedException {
+        Todo todo = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", (long) id));
+
+        if (!todo.getUser().getUsername().equals(username) && !todo.getUser().getEmail().equals(username)) {
+            throw new AccessDeniedException("Unauthorized access to this task");
+        }
+
+        return modelMapper.map(todo, TodoDto.class);
+    }
+
+    @Override
+    public List<TodoDto> getAllTimeFilteredGroupsForUser(String username, int pageNo, int pageSize, String sortBy, String sortDir, LocalDateTime requestedDate) {
         Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name())
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
@@ -46,75 +58,127 @@ public class todoServiceImpl implements TodoService {
         User user = userRepository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        Page<Todo> todosPage = repository.findByUser(user, pageable);
+        // Calculate start and end of the day
+        LocalDateTime startOfDay = requestedDate.toLocalDate().atStartOfDay();
+        LocalDateTime endOfDay = requestedDate.toLocalDate().atTime(23, 59, 59);
 
-        return todosPage.getContent()
-                .stream()
+        // Fetch parents for that specific date
+        Page<Todo> groupsPage = repository.findByUserAndParentIsNullAndCreatedAtBetween(
+                user, startOfDay, endOfDay, pageable);
+
+        return groupsPage.getContent().stream()
                 .map(todo -> modelMapper.map(todo, TodoDto.class))
                 .toList();
     }
 
     @Override
-    public TodoDto getTodoById(Long id, String username) throws AccessDeniedException {
-        Todo todo = repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", id));
+    public List<TodoDto> getAllGroupsForUser(String username, int pageNo, int pageSize, String sortBy, String sortDir) {
+        Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name())
+                ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
 
-        if (todo.getUser() == null) {
-            throw new ResourceNotFoundException("User", "Todo ID", id);
-        }
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
 
-        if (!todo.getUser().getEmail().equals(username) && !todo.getUser().getUsername().equals(username)) {
-            throw new AccessDeniedException("You are not authorized to access this Todo");
-        }
+        User user = userRepository.findByUsernameOrEmail(username, username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        return modelMapper.map(todo, TodoDto.class);
+        // Fetch only parents (Groups)
+        Page<Todo> groupsPage = repository.findByUserAndParentIsNull(user, pageable);
+
+        return groupsPage.getContent().stream()
+                .map(todo -> modelMapper.map(todo, TodoDto.class))
+                .toList();
     }
 
     @Override
-    public TodoDto createTodoForUser(TodoDto dto, String username) {
+    public TodoDto createTodoGroup(TodoDto dto, String username) {
         User user = userRepository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-        Todo todo = modelMapper.map(dto, Todo.class);
-        todo.setUser(user);
-        Todo saved = repository.save(todo);
+
+        Todo parent = modelMapper.map(dto, Todo.class);
+        parent.setUser(user);
+
+        if (parent.getSubTasks() != null) {
+            parent.getSubTasks().clear();
+        } else {
+            parent.setSubTasks(new ArrayList<>());
+        }
+
+        if (dto.getSubTasks() != null) {
+            dto.getSubTasks().forEach(subDto -> {
+                Todo child = modelMapper.map(subDto, Todo.class);
+                child.setUser(user);
+                child.setParent(parent);
+                parent.getSubTasks().add(child);
+            });
+        }
+
+        Todo saved = repository.save(parent);
         return modelMapper.map(saved, TodoDto.class);
     }
 
     @Override
-    public TodoDto updateTodo(Long id, TodoDto todo, String username) throws AccessDeniedException {
-        Todo selectedTodo = repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", id));
+    public TodoDto updateTodo(int id, TodoDto dto, String username) throws AccessDeniedException {
+        Todo existingGroup = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", (long) id));
 
-        if (selectedTodo.getUser() == null) {
-            throw new ResourceNotFoundException("User", "Todo ID", id);
+        if (!existingGroup.getUser().getUsername().equals(username) && !existingGroup.getUser().getEmail().equals(username)) {
+            throw new AccessDeniedException("Unauthorized update");
         }
 
-        if (!selectedTodo.getUser().getEmail().equals(username) && !selectedTodo.getUser().getUsername().equals(username)) {
-            throw new AccessDeniedException("You are not authorized to update this Todo");
+        // 1. Update Parent Fields
+        existingGroup.setName(dto.getName());
+        existingGroup.setDescription(dto.getDescription());
+        existingGroup.setCompleted(dto.isCompleted());
+
+        // 2. Efficiently Update Subtasks
+        List<Todo> incomingSubTasks = new ArrayList<>();
+
+        if (dto.getSubTasks() != null) {
+            for (TodoDto subDto : dto.getSubTasks()) {
+                if (subDto.getId() > 0) {
+                    // Find existing subtask to update
+                    existingGroup.getSubTasks().stream()
+                            .filter(s -> s.getId() == subDto.getId())
+                            .findFirst()
+                            .ifPresent(existingSub -> {
+                                existingSub.setName(subDto.getName());
+                                existingSub.setCompleted(subDto.isCompleted());
+                                incomingSubTasks.add(existingSub);
+                            });
+                } else {
+                    // It's a new subtask
+                    Todo newSub = modelMapper.map(subDto, Todo.class);
+                    newSub.setUser(existingGroup.getUser());
+                    newSub.setParent(existingGroup);
+                    incomingSubTasks.add(newSub);
+                }
+            }
         }
 
-        selectedTodo.setName(todo.getName());
-        selectedTodo.setDescription(todo.getDescription());
-        selectedTodo.setCompleted(todo.isCompleted());
-        selectedTodo.setReminder(todo.getReminder());
+        // 3. Remove orphans (tasks that were in DB but not in the new list)
+        existingGroup.getSubTasks().clear();
+        existingGroup.getSubTasks().addAll(incomingSubTasks);
 
-        Todo updatedTodo = repository.save(selectedTodo);
-        return modelMapper.map(updatedTodo, TodoDto.class);
+        // 4. Automatic Parent Completion Check
+        boolean allSubTasksDone = !incomingSubTasks.isEmpty() &&
+                incomingSubTasks.stream().allMatch(Todo::isCompleted);
+
+        existingGroup.setCompleted(allSubTasksDone);
+
+        Todo updated = repository.save(existingGroup);
+        return modelMapper.map(updated, TodoDto.class);
     }
 
     @Override
-    public void delete(Long id, String username) throws AccessDeniedException {
-        Todo selectedTodo = repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", id));
+    public void delete(int id, String username) throws AccessDeniedException {
+        Todo group = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", (long) id));
 
-        if (selectedTodo.getUser() == null) {
-            throw new ResourceNotFoundException("User", "Todo ID", id);
+        if (!group.getUser().getEmail().equals(username) && !group.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException("Unauthorized deletion");
         }
 
-        if (!selectedTodo.getUser().getEmail().equals(username) && !selectedTodo.getUser().getUsername().equals(username)) {
-            throw new AccessDeniedException("You are not authorized to delete this Todo");
-        }
-
-        repository.delete(selectedTodo);
+        repository.delete(group);
     }
 }

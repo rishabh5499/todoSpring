@@ -10,7 +10,6 @@ import in.vyomsoft.todo.payload.NotesDto;
 import in.vyomsoft.todo.payload.TodoDto;
 import in.vyomsoft.todo.repository.NotesRepository;
 import in.vyomsoft.todo.repository.UserRepository;
-import in.vyomsoft.todo.service.ImgBBService;
 import in.vyomsoft.todo.service.NotesService;
 import jakarta.transaction.Transactional;
 import org.aspectj.weaver.ast.Not;
@@ -34,13 +33,11 @@ public class NotesServiceImpl implements NotesService {
     ModelMapper modelMapper;
     @Autowired
     private UserRepository userRepository;
-    private ImgBBService imgBBService;
 
-    public NotesServiceImpl(NotesRepository repository, ModelMapper modelMapper, UserRepository userRepository, ImgBBService imgBBService) {
+    public NotesServiceImpl(NotesRepository repository, ModelMapper modelMapper, UserRepository userRepository) {
         this.repository = repository;
         this.modelMapper = modelMapper;
         this.userRepository = userRepository;
-        this.imgBBService = imgBBService;
     }
 
     @Override
@@ -100,8 +97,8 @@ public class NotesServiceImpl implements NotesService {
             throw new AccessDeniedException("You are not authorized to update this Note");
         }
 
-        if (note.getMedias().getFirst().getDeleteUrl() != null)
-            imgBBService.deleteImage(note.getMedias().getFirst().getDeleteUrl());
+        if (!note.getMedias().isEmpty() && note.getMedias().getFirst().getDeleteUrl() != null)
+//            imgBBService.deleteImage(note.getMedias().getFirst().getDeleteUrl());
 
         note.setTitle(notesDto.getTitle());
         note.setDescription(notesDto.getDescription());
@@ -137,86 +134,6 @@ public class NotesServiceImpl implements NotesService {
         return modelMapper.map(updatedNote, NotesDto.class);
     }
 
-//    @Override
-//    @Transactional
-//    public NotesDto updateNote(Long id, NotesDto notesDto, String username) throws AccessDeniedException {
-//        Notes note = repository.findById(id)
-//                .orElseThrow(() -> new ResourceNotFoundException("Note", "id", id));
-//
-//        if (note.getUser() == null) {
-//            throw new ResourceNotFoundException("User", "Note ID", id);
-//        }
-//
-//        if (!note.getUser().getEmail().equals(username) && !note.getUser().getUsername().equals(username)) {
-//            throw new AccessDeniedException("You are not authorized to update this Note");
-//        }
-//
-//        note.setTitle(notesDto.getTitle());
-//        note.setDescription(notesDto.getDescription());
-//        note.setCreatedAt(notesDto.getCreatedAt());
-//
-//        // Assuming you updated your DTO to have a List<MediaDTO>
-//        List<MediaDTO> incomingMediaDTOs = notesDto.getMedias();
-//        List<Media> existingMedias = note.getMedias();
-//
-//        // Build a map of incoming by mediaId for easy lookup
-//        Map<String, MediaDTO> incomingMap = incomingMediaDTOs.stream()
-//                .collect(Collectors.toMap(dto -> dto.getData().getId(), Function.identity()));
-//
-//        // Remove medias that are not in incoming list
-//        existingMedias.removeIf(existing ->
-//                !incomingMap.containsKey(existing.getMediaId())
-//        );
-//
-//        // Add new medias that don't already exist
-//        for (MediaDTO mediaDTO : incomingMediaDTOs) {
-//            String mediaId = mediaDTO.getData().getId();
-//            boolean alreadyPresent = existingMedias.stream()
-//                    .anyMatch(m -> m.getMediaId().equals(mediaId));
-//
-//            if (!alreadyPresent) {
-//                Media media = new Media();
-//                media.setMediaId(mediaId);
-//                media.setTitle(mediaDTO.getData().getTitle());
-//                media.setUrlViewer(mediaDTO.getData().getUrl_viewer());
-//                media.setDeleteUrl(mediaDTO.getData().getDelete_url());
-//
-//                Media.ImageDetail image = new Media.ImageDetail();
-//                image.setFilename(mediaDTO.getData().getImage().getFilename());
-//                image.setMime(mediaDTO.getData().getImage().getMime());
-//                image.setUrl(mediaDTO.getData().getImage().getUrl());
-//                media.setImage(image);
-//
-//                Media.ImageDetail thumb = new Media.ImageDetail();
-//                thumb.setFilename(mediaDTO.getData().getThumb().getFilename());
-//                thumb.setMime(mediaDTO.getData().getThumb().getMime());
-//                thumb.setUrl(mediaDTO.getData().getThumb().getUrl());
-//                media.setThumb(thumb);
-//
-//                media.setNote(note); // Establish link
-//                existingMedias.add(media);
-//            }
-//        }
-//
-//        Notes updatedNote = repository.save(note);
-//        return modelMapper.map(updatedNote, NotesDto.class);
-//    }
-
-//    @Override
-//    public void deleteNote(Long id, String username) throws AccessDeniedException {
-//        Notes selectedNote = repository.findById(id)
-//                .orElseThrow(() -> new ResourceNotFoundException("Todo", "id", id));
-//
-//        if (selectedNote.getUser() == null) {
-//            throw new ResourceNotFoundException("User", "Todo ID", id);
-//        }
-//
-//        if (!selectedNote.getUser().getEmail().equals(username) && !selectedNote.getUser().getUsername().equals(username)) {
-//            throw new AccessDeniedException("You are not authorized to delete this Todo");
-//        }
-//
-//        repository.delete(selectedNote);
-//    }
     @Override
     @Transactional
     public void deleteNote(Long id, String username) throws AccessDeniedException {

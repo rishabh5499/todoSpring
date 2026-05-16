@@ -52,6 +52,9 @@ public class securityConfig {
                 .authorizeHttpRequests(authorize ->
                         authorize.requestMatchers(HttpMethod.GET, "/todos/**").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/auth/**").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/userDetails/forgot-password").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/userDetails/reset-password").permitAll()
+                                .requestMatchers("/userDetails/**").authenticated()
                                 .anyRequest().authenticated())
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));

@@ -1,75 +1,112 @@
 package in.vyomsoft.todo.service.implementation;
 
-import in.vyomsoft.todo.entity.Todo;
 import in.vyomsoft.todo.entity.User;
 import in.vyomsoft.todo.exception.ResourceNotFoundException;
 import in.vyomsoft.todo.payload.*;
-import in.vyomsoft.todo.repository.TodoRepository;
 import in.vyomsoft.todo.repository.UserRepository;
-import in.vyomsoft.todo.service.ImgBBService;
+import in.vyomsoft.todo.service.S3Service;
 import in.vyomsoft.todo.service.UserService;
 import jakarta.transaction.Transactional;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.nio.file.AccessDeniedException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.Random;
 
 @Service
 public class userDetailServiceImpl implements UserService {
-    private UserRepository repository;
-    private PasswordEncoder passwordEncoder;
-    private ModelMapper modelMapper;
-    private ImgBBService imgBBService;
 
-    public userDetailServiceImpl(UserRepository repository, PasswordEncoder passwordEncoder, ModelMapper modelMapper, ImgBBService imgBBService) {
+    private final UserRepository repository;
+    private final PasswordEncoder passwordEncoder;
+    private final ModelMapper modelMapper;
+    private final S3Service s3Service;
+
+    @Value("${weather.api.key}")
+    private String weatherApiKey;
+
+    @Autowired
+    private JavaMailSender mailSender;
+
+    public userDetailServiceImpl(
+            UserRepository repository,
+            PasswordEncoder passwordEncoder,
+            ModelMapper modelMapper,
+            S3Service s3Service) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
         this.modelMapper = modelMapper;
-        this.imgBBService = imgBBService;
+        this.s3Service = s3Service;
     }
 
     @Override
-    public UserDetailsDTO getUserDetails(String username) throws AccessDeniedException {
+    public UserDetailsDTO getUserDetails(String username, String ipAddress) {
         User user = repository.findByUsernameOrEmail(username, username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username or email: " + username));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        return modelMapper.map(user, UserDetailsDTO.class);
+        UserDetailsDTO dto = modelMapper.map(user, UserDetailsDTO.class);
+
+        try {
+            String url = String.format(
+                    "https://api.weatherapi.com/v1/current.json?key=%s&q=%s",
+                    weatherApiKey,
+                    ipAddress
+            );
+            RestTemplate restTemplate = new RestTemplate();
+            WeatherResponse response = restTemplate.getForObject(url, WeatherResponse.class);
+
+            if (response != null && response.getCurrent() != null) {
+                WeatherResponse.Condition condition = response.getCurrent().getCondition();
+
+                WeatherDTO weatherDto = new WeatherDTO();
+                weatherDto.setText(condition.getText());
+                weatherDto.setIcon("https:" + condition.getIcon());
+
+                dto.setWeather(weatherDto);
+            }
+        } catch (Exception e) {
+            WeatherDTO fallback = new WeatherDTO();
+            fallback.setText("");
+            dto.setWeather(fallback);
+        }
+
+        return dto;
     }
 
     @Override
     @Transactional
-    public UserDetailsDTO updateUser(UserDetailsDTO user, String username) throws AccessDeniedException {
+    public UserDetailsDTO updateUser(UserDetailsDTO userDto, String username) throws AccessDeniedException {
         User selectedUser = repository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        LocalDate now = LocalDate.now();
+        boolean isImageChanging = userDto.getDpUrl() != null &&
+                !userDto.getDpUrl().equals(selectedUser.getDpUrl());
 
-        if (selectedUser.getPictureChangeWindowStart() == null ||
-                selectedUser.getPictureChangeWindowStart().plusMonths(3).isBefore(now)) {
-            selectedUser.setPictureChangeWindowStart(now);
-            selectedUser.setPictureChangeCount(0);
-        }
+        if (isImageChanging) {
+            String oldS3Url = selectedUser.getDpUrl();
 
-        int maxAllowedChanges = 3;
-        if (!Objects.equals(user.getDpUrl(), selectedUser.getDpUrl())) {
-            if (selectedUser.getPictureChangeCount() >= maxAllowedChanges) {
-                throw new AccessDeniedException("Picture change limit exceeded for current 3-month window.");
+            if (oldS3Url != null && !oldS3Url.isEmpty()) {
+                s3Service.deleteImageByUrl(oldS3Url);
+                System.out.println("Cleaned up old image: " + oldS3Url);
             }
             selectedUser.setPictureChangeCount(selectedUser.getPictureChangeCount() + 1);
         }
 
-        selectedUser.setName(user.getName());
-        selectedUser.setUsername(user.getUsername());
-        selectedUser.setDpUrl(user.getDpUrl());
-        selectedUser.setDeleteUrl(user.getDeleteUrl());
+        selectedUser.setName(userDto.getName());
+        selectedUser.setUsername(userDto.getUsername());
+        selectedUser.setDpUrl(userDto.getDpUrl());
 
-        User updated = repository.save(selectedUser);
-        return modelMapper.map(updated, UserDetailsDTO.class);
+        User updatedUser = repository.save(selectedUser);
+        return modelMapper.map(updatedUser, UserDetailsDTO.class);
     }
 
     @Override
@@ -77,17 +114,12 @@ public class userDetailServiceImpl implements UserService {
         User selectedUser = repository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with username or email: " + username));
 
-        if (selectedUser.getUsername() == null) {
-            throw new ResourceNotFoundException("User", "User Name", selectedUser.getId());
-        }
-
         if (!selectedUser.getEmail().equals(username) && !selectedUser.getUsername().equals(username)) {
-            throw new AccessDeniedException("You are not authorized to update this Todo");
+            throw new AccessDeniedException("You are not authorized to update this password");
         }
 
         selectedUser.setPassword(passwordEncoder.encode(user.getNewPassword()));
-
-        User updatedTodo = repository.save(selectedUser);
+        repository.save(selectedUser);
         return "Password Updated Successfully";
     }
 
@@ -96,17 +128,19 @@ public class userDetailServiceImpl implements UserService {
         User selectedUser = repository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with username or email: " + username));
 
-        if (selectedUser.getUsername() == null) {
-            throw new ResourceNotFoundException("User", "User Name", selectedUser.getId());
+        if (!selectedUser.getEmail().equals(username) && !selectedUser.getUsername().equals(username)) {
+            throw new AccessDeniedException("You are not authorized to delete this account");
         }
 
-        if (!selectedUser.getEmail().equals(username) && !selectedUser.getUsername().equals(username)) {
-            throw new AccessDeniedException("You are not authorized to update this Todo");
+        // Cleanup profile picture from S3 before deleting user
+        if (selectedUser.getDpUrl() != null) {
+            s3Service.deleteImageByUrl(selectedUser.getDpUrl());
         }
 
         repository.delete(selectedUser);
     }
 
+    @Override
     public PictureLimitDTO getPictureChangeLimit(String username) {
         User user = repository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
@@ -115,7 +149,6 @@ public class userDetailServiceImpl implements UserService {
 
         if (user.getPictureChangeWindowStart() == null ||
                 user.getPictureChangeWindowStart().plusMonths(3).isBefore(now)) {
-            // 3-month window expired → reset quota
             user.setPictureChangeWindowStart(now);
             user.setPictureChangeCount(0);
             repository.save(user);
@@ -128,16 +161,55 @@ public class userDetailServiceImpl implements UserService {
         return new PictureLimitDTO(maxAllowedChanges, used, remaining);
     }
 
-    private boolean isPictureChangeLimitExceeded(User user, int maxAllowedChanges) {
-        LocalDate now = LocalDate.now();
+    @Override
+    public String generateOtp(String email) {
+        User user = repository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
-        if (user.getPictureChangeWindowStart() == null ||
-                user.getPictureChangeWindowStart().isBefore(now.withDayOfMonth(1))) {
-            // New month — reset window
-            user.setPictureChangeWindowStart(now.withDayOfMonth(1));
-            user.setPictureChangeCount(0);
+        // Generate 6-digit OTP
+        String otp = String.format("%06d", new Random().nextInt(999999));
+
+        // Set OTP and Expiry (5 minutes)
+        user.setResetOtp(otp);
+        user.setOtpExpiry(LocalDateTime.now().plusMinutes(5));
+        repository.save(user);
+
+        // Trigger Email
+        sendOtpEmail(email, otp);
+
+        return "OTP sent successfully to " + email;
+    }
+
+    @Override
+    @Transactional
+    public String resetPasswordWithOtp(ResetPasswordRequest request) {
+        User user = repository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        // Validate OTP and Expiry
+        if (user.getResetOtp() != null &&
+                user.getResetOtp().equals(request.getOtp()) &&
+                user.getOtpExpiry().isAfter(LocalDateTime.now())) {
+
+            // Update password and clear OTP fields
+            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            user.setResetOtp(null);
+            user.setOtpExpiry(null);
+            repository.save(user);
+
+            return "Password reset successfully!";
+        } else {
+            throw new RuntimeException("Invalid or expired OTP");
         }
+    }
 
-        return user.getPictureChangeCount() >= maxAllowedChanges;
+    public void sendOtpEmail(String toEmail, String otp) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom("qavyomsoft@gmail.com");
+        message.setTo(toEmail);
+        message.setSubject("Your Noti Password Reset OTP");
+        message.setText("Hello,\n\nYou requested a password reset for Noti. Your OTP is: " + otp +
+                "\n\nIt will expire in 5 minutes. If you didn't request this, ignore this email.");
+        mailSender.send(message);
     }
 }
