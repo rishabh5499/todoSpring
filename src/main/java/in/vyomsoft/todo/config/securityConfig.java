@@ -19,6 +19,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+
+import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
@@ -48,7 +51,17 @@ public class securityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChains(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable())
+        http
+                // 1. Explicitly enable CORS with a permissive policy
+                .cors(cors -> cors.configurationSource(request -> {
+                    CorsConfiguration config = new CorsConfiguration();
+                    config.setAllowedOrigins(List.of("*")); // Allows Postman and external frontends
+                    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                    config.setAllowedHeaders(List.of("*"));
+                    return config;
+                }))
+                // 2. Keep your existing CSRF disablement
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authorize ->
                         authorize.requestMatchers(HttpMethod.GET, "/todos/**").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/auth/**").permitAll()
@@ -62,6 +75,22 @@ public class securityConfig {
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
+//    @Bean
+//    SecurityFilterChain securityFilterChains(HttpSecurity http) throws Exception {
+//        http.csrf(csrf -> csrf.disable())
+//                .authorizeHttpRequests(authorize ->
+//                        authorize.requestMatchers(HttpMethod.GET, "/todos/**").permitAll()
+//                                .requestMatchers(HttpMethod.POST, "/api/auth/**").permitAll()
+//                                .requestMatchers(HttpMethod.POST, "/userDetails/forgot-password").permitAll()
+//                                .requestMatchers(HttpMethod.POST, "/userDetails/reset-password").permitAll()
+//                                .requestMatchers("/userDetails/**").authenticated()
+//                                .anyRequest().authenticated())
+//                .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint))
+//                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+//
+//        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+//        return http.build();
+//    }
 
 //    @Bean
 //    public UserDetailsService userDetailsService() {
