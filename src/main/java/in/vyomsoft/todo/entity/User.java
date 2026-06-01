@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +30,13 @@ public class User {
     @Column(nullable = false)
     private String password;
     private String dpUrl;
+    private String deleteUrl;
+    private int pictureChangeCount;
+    private LocalDate pictureChangeWindowStart;
+    @Column(name = "reset_otp")
+    private String resetOtp;
+    @Column(name = "otp_expiry")
+    private LocalDateTime otpExpiry;
     @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @JoinTable(name = "users_roles",
             joinColumns = @JoinColumn(name = "user_id", referencedColumnName = "id"),

@@ -34,10 +34,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+//    @ExceptionHandler(TodoAPIException.class)
+//    public ResponseEntity<ErrorDetails> handleBlogApiException(TodoAPIException exception,
+//                                                               WebRequest webRequest) {
+//        ErrorDetails errorDetails = new ErrorDetails(webRequest.getDescription(false), exception.getMessage(), new Date());
+//        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+//    }
+
     @ExceptionHandler(TodoAPIException.class)
-    public ResponseEntity<ErrorDetails> handleBlogApiException(TodoAPIException exception,
+    public ResponseEntity<ErrorDetails> handleTodoAPIException(TodoAPIException exception,
                                                                WebRequest webRequest) {
-        ErrorDetails errorDetails = new ErrorDetails(webRequest.getDescription(false), exception.getMessage(), new Date());
-        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+        ErrorDetails errorDetails = new ErrorDetails(
+                webRequest.getDescription(false),
+                exception.getMessage(),
+                new Date()
+        );
+
+        return new ResponseEntity<>(errorDetails, exception.getStatus());
     }
 }

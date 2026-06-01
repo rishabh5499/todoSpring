@@ -53,24 +53,43 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public String register(RegisterDto registerDto) {
         if (userRepository.existsByUsername(registerDto.getUsername())) {
-            throw new TodoAPIException(HttpStatus.BAD_REQUEST, "Username exists");
+            throw new TodoAPIException(HttpStatus.CONFLICT, "Username is already taken");
         }
 
         if (userRepository.existsByEmail(registerDto.getEmail())) {
-            throw new TodoAPIException(HttpStatus.BAD_REQUEST, "Email exists");
+            throw new TodoAPIException(HttpStatus.CONFLICT, "Email is already registered");
         }
+
         User user = new User();
         user.setName(registerDto.getName());
         user.setUsername(registerDto.getUsername());
         user.setEmail(registerDto.getEmail());
-        user.setPassword(passwordEncoder.encode(registerDto.getPassword()));
+
+        // 1. Keep a reference to the raw, unencoded password for the authentication step
+        String rawPassword = registerDto.getPassword();
+        user.setPassword(passwordEncoder.encode(rawPassword));
 
         Set<Role> roles = new HashSet<>();
-        Role userRole = roleRepository.findByName("ROLE_USER").get();
+        Role userRole = roleRepository.findByName("ROLE_USER")
+                .orElseGet(() -> {
+                    Role newRole = new Role();
+                    newRole.setId(1L);
+                    newRole.setName("ROLE_USER");
+                    return roleRepository.save(newRole);
+                });
         roles.add(userRole);
         user.setRoles(roles);
 
+        // 2. Save the user to the database first
         userRepository.save(user);
-        return "User registered successfully";
+
+        // 3. Programmatically authenticate the user right away using their raw credentials
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(registerDto.getUsername(), rawPassword));
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // 4. Generate and return the JWT token directly to the frontend
+        return jwtTokenProvider.generateToken(authentication);
     }
 }

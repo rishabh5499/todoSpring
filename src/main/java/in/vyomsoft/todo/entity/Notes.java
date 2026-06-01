@@ -24,6 +24,9 @@ public class Notes {
     private Long id;
 
     private String title;
+
+    @Lob
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     @CreationTimestamp
