@@ -162,9 +162,11 @@ public class userDetailServiceImpl implements UserService {
     }
 
     @Override
-    public String generateOtp(String email) {
-        User user = repository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+    public String generateOtp(String identifier) {
+        User user = repository.findByEmail(identifier)
+                .or(() -> repository.findByUsername(identifier))
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with input: " + identifier));
+        String targetEmail = user.getEmail();
 
         // Generate 6-digit OTP
         String otp = String.format("%06d", new Random().nextInt(999999));
@@ -174,16 +176,17 @@ public class userDetailServiceImpl implements UserService {
         user.setOtpExpiry(LocalDateTime.now().plusMinutes(5));
         repository.save(user);
 
-        // Trigger Email
-        sendOtpEmail(email, otp);
+        // Trigger Email to the found user's email address
+        sendOtpEmail(targetEmail, otp);
 
-        return "OTP sent successfully to " + email;
+        return "OTP sent successfully to " + (targetEmail);
     }
 
     @Override
     @Transactional
     public String resetPasswordWithOtp(ResetPasswordRequest request) {
         User user = repository.findByEmail(request.getEmail())
+                .or(() -> repository.findByUsername(request.getEmail()))
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         // Validate OTP and Expiry
