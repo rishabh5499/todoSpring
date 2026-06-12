@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.nio.file.AccessDeniedException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import static in.vyomsoft.todo.utils.AppConstants.*;
@@ -49,12 +50,12 @@ public class TodoController {
     public List<TodoDto> getAllTimeFilteredGroupsForUser(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(value = "date", required = false) String dateString,
+            @RequestParam(value = "timezone", required = false, defaultValue = "UTC") String timezoneId,
             Pageable pageable) {
 
-        // Default to today if no date is passed
-        LocalDateTime requestedDate = (dateString != null)
-                ? LocalDate.parse(dateString).atStartOfDay()
-                : LocalDateTime.now();
+        LocalDate localDate = (dateString != null)
+                ? LocalDate.parse(dateString)
+                : LocalDate.now(ZoneId.of(timezoneId));
 
         return service.getAllTimeFilteredGroupsForUser(
                 userDetails.getUsername(),
@@ -62,7 +63,8 @@ public class TodoController {
                 pageable.getPageSize(),
                 pageable.getSort().stream().findFirst().map(Sort.Order::getProperty).orElse(DEFAULT_SORT_BY),
                 pageable.getSort().stream().findFirst().map(order -> order.getDirection().name()).orElse(DEFAULT_SORT_DIR),
-                requestedDate
+                localDate,
+                timezoneId
         );
     }
 

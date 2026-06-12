@@ -83,9 +83,9 @@ public class AuthServiceImpl implements AuthService {
         // 2. Save the user to the database first
         userRepository.save(user);
 
-        // 3. Programmatically authenticate the user right away using their raw credentials
+        // 3. Programmatically authenticate using email (or username) to match CustomUserDetailsService expectations
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(registerDto.getUsername(), rawPassword));
+                new UsernamePasswordAuthenticationToken(registerDto.getEmail(), rawPassword));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
 

@@ -11,10 +11,9 @@ import java.time.LocalDate;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserDetailsDTO {
+    private Long id;
     private String name;
-    @Column(unique = true)
     private String email;
-    @Column(unique = true)
     private String username;
     private String dpUrl;
     private String deleteUrl;

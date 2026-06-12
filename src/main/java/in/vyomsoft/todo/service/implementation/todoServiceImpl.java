@@ -17,7 +17,10 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.AccessDeniedException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -47,8 +50,10 @@ public class todoServiceImpl implements TodoService {
         return modelMapper.map(todo, TodoDto.class);
     }
 
-    @Override
-    public List<TodoDto> getAllTimeFilteredGroupsForUser(String username, int pageNo, int pageSize, String sortBy, String sortDir, LocalDateTime requestedDate) {
+    public List<TodoDto> getAllTimeFilteredGroupsForUser(
+            String username, int pageNo, int pageSize, String sortBy, String sortDir,
+            LocalDate requestedDate, String timezoneId) {
+
         Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name())
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
@@ -58,13 +63,13 @@ public class todoServiceImpl implements TodoService {
         User user = userRepository.findByUsernameOrEmail(username, username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        // Calculate start and end of the day
-        LocalDateTime startOfDay = requestedDate.toLocalDate().atStartOfDay();
-        LocalDateTime endOfDay = requestedDate.toLocalDate().atTime(23, 59, 59);
-
-        // Fetch parents for that specific date
+        ZoneId userZone = ZoneId.of(timezoneId);
+        ZonedDateTime localStart = requestedDate.atStartOfDay(userZone);
+        ZonedDateTime localEnd = requestedDate.atTime(23, 59, 59, 999999999).atZone(userZone);
+        LocalDateTime startInUtc = localStart.withZoneSameInstant(ZoneId.of("UTC")).toLocalDateTime();
+        LocalDateTime endInUtc = localEnd.withZoneSameInstant(ZoneId.of("UTC")).toLocalDateTime();
         Page<Todo> groupsPage = repository.findByUserAndParentIsNullAndCreatedAtBetween(
-                user, startOfDay, endOfDay, pageable);
+                user, startInUtc, endInUtc, pageable);
 
         return groupsPage.getContent().stream()
                 .map(todo -> modelMapper.map(todo, TodoDto.class))
